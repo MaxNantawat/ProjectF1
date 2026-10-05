@@ -3,43 +3,66 @@ import pandas as pd
 import plotly.express as px
 import json
 
-# 1. ตั้งชื่อหัวข้อแดชบอร์ด
-st.title("🏎️ F1 Telemetry Dashboard (Max Verstappen)")
-st.write("กราฟวิเคราะห์ข้อมูล Telemetry จากไฟล์ของคุณ")
+st.title("🏎️ F1 Telemetry Comparison Dashboard")
+st.subheader("เปรียบเทียบข้อมูล Telemetry ระหว่างนักแข่งสองคน")
 
-# 2. จำลองการอ่านข้อมูล (ให้เปลี่ยนเป็นวิธีโหลดไฟล์จริงด้านล่าง)
-# สมมติว่าคุณเซฟไฟล์ตัวอย่างนั้นไว้ในชื่อ 'f1_data.json' ในโฟลเดอร์เดียวกัน
 try:
+    # 1. โหลดข้อมูลชุดที่ 1 (ตัวอย่าง: Max Verstappen)
     with open('f1_data.json', 'r') as f:
-        raw_data = json.load(f)
-    
-    # ดึงข้อมูลย่อยในคีย์ "tel" ออกมาแปลงเป็นตาราง (DataFrame)
-    df = pd.DataFrame(raw_data['tel'])
-    
-    # 3. สร้างเมนูให้เลือกดูตัวแปรที่สนใจ
-    option = st.selectbox(
-        'เลือกข้อมูลที่ต้องการแสดงในกราฟ Y-Axis:',
-        ('speed', 'rpm', 'throttle', 'gear')
+        data1 = json.load(f)
+    df1 = pd.DataFrame(data1['tel'])
+    df1['Driver'] = 'VER' # เพิ่มคอลัมน์ระบุชื่อนักแข่งคนแรก
+
+    # 2. โหลดข้อมูลชุดที่ 2 (ตัวอย่าง: Lewis Hamilton)
+    # หากยังไม่ได้อัปโหลดไฟล์ที่ 2 โค้ดจะข้ามไปทำงานส่วนถัดไปไม่ให้เว็บพัง
+    try:
+        with open('f1_data_2.json', 'r') as f:
+            data2 = json.load(f)
+        df2 = pd.DataFrame(data2['tel'])
+        df2['Driver'] = 'HAM' # เพิ่มคอลัมน์ระบุชื่อนักแข่งคนที่สอง
+        
+        # นำตารางของนักแข่งทั้งสองคนมาต่อรวมกันเป็นตารางเดียว
+        df_combined = pd.concat([df1, df2], ignore_index=True)
+        multi_driver = True
+    except FileNotFoundError:
+        df_combined = df1
+        multi_driver = False
+        st.warning("⚠️ โหลดข้อมูลได้เฉพาะคนแรก เนื่องจากยังไม่พบไฟล์ f1_data_2.json ใน GitHub")
+
+    # 3. เมนูเลือกตัวแปรที่จะดูบนกราฟ
+    metrics = st.selectbox(
+        'เลือกข้อมูล Telemetry ที่ต้องการเปรียบเทียบ:',
+        ['speed', 'rpm', 'throttle', 'gear']
     )
 
-    # 4. สร้างกราฟเส้นโดยใช้ Plotly (แกน X เป็นเวลา, แกน Y เป็นข้อมูลที่เลือก)
-    fig = px.line(
-        df, 
-        x='time', 
-        y=option, 
-        title=f'กราฟแสดง {option.upper()} เปรียบเทียบกับเวลา (Time)',
-        labels={'time': 'เวลา (วินาที)', option: option.upper()}
+    # 4. สร้างกราฟเส้นเปรียบเทียบ (ถ้ามี 2 คน จะมีเส้นขึ้นมา 2 สีสลับกันให้เห็นชัดเจน)
+    # เราใช้สีจากคอลัมน์ 'Driver' ในการแยกเส้น
+    fig_telemetry = px.line(
+        df_combined, 
+        x='distance', 
+        y=metrics, 
+        color='Driver' if multi_driver else None,
+        title=f'กราฟเปรียบเทียบ {metrics.upper()} บนระยะทางสนาม (Distance)',
+        labels={'distance': 'ระยะทางในสนาม (เมตร)', metrics: metrics.upper(), 'Driver': 'นักแข่ง'}
     )
-    
-    # ปรับแต่งกราฟให้สวยงามขึ้น
-    fig.update_layout(hovermode="x unified")
-    
-    # 5. แสดงกราฟบนหน้าเว็บ
-    st.plotly_chart(fig)
-    
-    # แสดงตารางข้อมูลดิบด้านล่างกราฟให้ผู้ใช้ดูได้ด้วย
-    st.subheader("📋 ตารางข้อมูลดิบ (Data Table)")
-    st.dataframe(df)
+    fig_telemetry.update_layout(hovermode="x unified")
+    st.plotly_chart(fig_telemetry)
+
+    # 5. พลอตแผนที่สนามแข่ง ( Racing Line ) เปรียบเทียบตำแหน่ง
+    if multi_driver:
+        st.markdown("---")
+        st.subheader("📍 เปรียบเทียบแผนที่สนามแข่ง (Track Map)")
+        
+        fig_track = px.scatter(
+            df_combined, 
+            x='x', 
+            y='y', 
+            color='Driver',
+            title='เปรียบเทียบ Racing Line เส้นทางการวิ่งของนักแข่งทั้งสองคน',
+            labels={'x': 'พิกัด X', 'y': 'พิกัด Y', 'Driver': 'นักแข่ง'}
+        )
+        fig_track.update_yaxes(scaleanchor="x", scaleratio=1)
+        st.plotly_chart(fig_track)
 
 except FileNotFoundError:
-    st.error("❌ ไม่พบไฟล์ f1_data.json กรุณาตรวจสอบว่าชื่อไฟล์ถูกต้องและอยู่ในโฟลเดอร์เดียวกันกับโค้ด")
+    st.error("❌ ไม่พบไฟล์ข้อมูลหลัก f1_data.json กรุณาตรวจสอบชื่อไฟล์บน GitHub")
